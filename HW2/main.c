@@ -1,20 +1,10 @@
 /*=============================================================================
-|   Source code:  myshell.c
-|        Author:  Jose A. Toledo
-|    Student ID:  6069060
-| Assignment #3:  Unix shell with redirects and pipes.
-|        Course:  COP 4338
-|       Section:  U02
-|    Instructor:  Caryl Rahn
-|      Due Date:  4/22
-|
 |	I hereby certify that this collective work is my own
 |	and none of it is the work of any other person or entity.
-|	______________________________________  Jose A. Toledo.
+|	______________________________________  Jose A. Toledo, Jasmine Batten.
 |  +-----------------------------------------------------------------------------
-|
 |  Description:  This program is an interactive shell capable of executing single
-|                unix commands and multiple unix commands by use of pipes.
+|                unix commands and multiple unix commands.
 |  *=============================================================================*/
 #include <stdio.h>
 #include <sys/wait.h>
@@ -27,17 +17,27 @@
 
 #define MAX_ARGS 20
 #define BUFFSIZ 1024
-#define ILLEGAL_OUT "Illegal output to file.\nMust output to next command.\n"
-#define ILLEGAL_IN "Illegal input file.\nMust get input from previous command.\n"
 
 typedef struct cmd_struct {
     char *argv[MAX_ARGS];
     int nargs;
-    int asyn;
+    int async;
 } CMD;
 
+int backGroundProcesses[BUFFSIZ];
+int forGroundProcesses[MAX_ARGS];
+int bIndex = 0;
+int fIndex = 0;
+
+void execute(CMD cmd);
+
+int get_args(char *cmdline, CMD commands[]);
+
+void exec_processes(char *cmdline);
+
+
 /*---------------------------- get_args ---------------------------
-        |  function int get_args(char *cmdline, CMD commands[], int *async)
+        |  function int get_args(char *cmdline, CMD commands[])
         |
         |  Purpose: Splits the command line into smaller execution blocks
         |           saved into an array of CMD struct.
@@ -45,11 +45,11 @@ typedef struct cmd_struct {
         |  @param   *cmdline(IN) Command line to be processed
         |           commands[](IN) Array of CMD to store individual
         |           programs.
-        |           *async(IN) Asynchronous flag.
+        |
         |
         |  @return  Total number of processes.
         *-------------------------------------------------------------*/
-int get_args(char *cmdline, CMD commands[], int *async) {
+int get_args(char *cmdline, CMD commands[]) {
     int i = 0;
     int j = 0;
     int programCount = 0;
@@ -59,7 +59,7 @@ int get_args(char *cmdline, CMD commands[], int *async) {
         return 0;
     programCount = 1;
     commands[j].nargs = 1;
-    commands[j].asyn = 0;
+    commands[j].async = 0;
 
     while ((commands[j].argv[++i] = strtok(NULL, "\n\t ")) != NULL) {
         if (i >= MAX_ARGS) {
@@ -67,135 +67,84 @@ int get_args(char *cmdline, CMD commands[], int *async) {
             exit(1);
         }
         commands[j].nargs = i + 1;
+
         if (strcmp(commands[j].argv[i], "&") == 0) {
-            commands[j].argv[i] = '\0';
+            commands[j].argv[i] = 0;
             commands[j].nargs = i;
-            commands[j].asyn = 1;
-        }
-        if (commands[j].argv[i] != '\0') {
-            if (strcmp(commands[j].argv[i], ";") == 0) {
-                commands[j].argv[i] = '\0';
-                commands[j].nargs = i;
-                programCount++;
-                j++;
-                i = -1;
-            }
+            commands[j].async = 1;
+        } else if (strcmp(commands[j].argv[i], ";") == 0) {
+            commands[j].argv[i] = 0;
+            commands[j].nargs = i;
+            programCount++;
+            j++;
+            i = -1;
         }
     }
     return programCount;
 }
 
-/*---------------------------- exec_procceses ---------------------------
-        |  function void exec_procceses(int programCount, CMD commands[], int async)
+/*---------------------------- exec_processes ---------------------------
+        |  function void exec_processes(char *cmdline)
         |
-        |  Purpose: Executes the processes stored in CMD array.
+        |  Purpose: Executes the processes passed in the command line.
         |
-        |  @param   programCount(IN) Total number of processes to execute.
-        |           commands[](IN) Array of CMD containning processes to be
-        |                          executed.
-        |           programs.
-        |           *async(IN) Asynchronous flag.
+        |  @param   char *cmdline String containing command line
         *-------------------------------------------------------------*/
-void exec_procceses(int programCount, CMD commands[], int async) {
-    int i, k;
-    int pid;
-    int outFile;
-    int inFile;
-    int fd[2];
-    int fdPrev; // track previous read-end of pipe
+void exec_processes(char *cmdline) {
+    CMD commands[MAX_ARGS];
 
-    for (i = 0; i < programCount; i++) {
+    int numbProcesses = get_args(cmdline, commands);
 
-        if (pipe(fd) < 0) {
-            perror("Pipe Failed.");
-            exit(-1);
-        }
-        pid = fork();
-        if (pid == 0) { /* child process */
-
-            // if async call, print background process ID;
-            if (commands[i].asyn == 1) {
-                printf("Background Process %d\n", getpid());
-            }
-
-            // check arguments
-            for (k = 0; k < commands[i].nargs; k++) {
-
-                if (!(strcmp(commands[i].argv[k], ">"))) {
-                    if (programCount > 1 && i != programCount - 1) {
-                        fprintf(stderr, ILLEGAL_OUT);
-                        exit(-1);
-                    }
-                    commands[i].argv[k] = '\0';
-                    outFile = open(commands[i].argv[k + 1], O_CREAT | O_RDONLY | O_WRONLY, S_IWUSR | S_IREAD);
-                    dup2(outFile, STDOUT_FILENO);
-                    close(outFile);
-                } else if (!(strcmp(commands[i].argv[k], ">>"))) {
-                    if (programCount > 1 && i != programCount - 1) {
-                        fprintf(stderr, ILLEGAL_OUT);
-                        exit(-1);
-                    }
-                    commands[i].argv[k] = '\0';
-                    outFile = open(commands[i].argv[k + 1], O_CREAT | O_APPEND | O_WRONLY | O_WRONLY,
-                                   S_IWUSR | S_IREAD);
-                    dup2(outFile, STDOUT_FILENO);
-                    close(outFile);
-                } else if (!(strcmp(commands[i].argv[k], "<"))) {
-                    if (programCount > 1 && i == programCount - 1 || (i != 0 && i != programCount - 1)) {
-                        fprintf(stderr, ILLEGAL_IN);
-                        exit(-1);
-                    }
-                    commands[i].argv[k] = '\0';
-                    inFile = open(commands[i].argv[k + 1], O_RDONLY, S_IREAD);
-                    dup2(inFile, STDIN_FILENO);
-                    close(inFile);
-                }
-            }
-
-            close(fd[0]);
-            execvp(commands[i].argv[0], commands[i].argv);
-            /* return only when exec fails */
-            perror("Exec Failed");
-            exit(-1);
-        } else if (pid > 0) { /* parent process */
-            if (commands[i].asyn != 1) {
-                waitpid(pid, NULL, 0);
-                close(fd[1]);
-                fdPrev = fd[0];
-            } else {
-                printf("this is an async call\n");
-            }
-        } else { /* error occurred */
-            perror("Fork Failed");
-            exit(-1);
-        }
+    int i = 0;
+    for (; i < numbProcesses; i++) {
+        execute(commands[i]);
     }
+
+    for (i = 0; i < fIndex; i++) {
+        waitpid(forGroundProcesses[i], NULL, 0);
+    }
+    fIndex = 0;
 }
 
 /*---------------------------- execute ---------------------------
-        |  function void execute(char *cmdline)
+        |  function void execute(CMD cmd)
         |
         |  Purpose: Executes command line entered by user.
         |
-        |  @param   *cmdline(IN) Command line to be executed.
+        |  @param   CMD cmd(IN) Command line to be executed.
         *-------------------------------------------------------------*/
-void execute(char *cmdline) {
-    int async = 0;
-    int programCount = 1;
-    // get number of commands to execute
-    int j;
-    for (j = 0; j < strlen(cmdline); j++) {
-        if ((cmdline[j] == ';')) {
-            programCount++;
+void execute(CMD cmd) {
+    int pid, async;
+    char *args[MAX_ARGS];
+
+    if (!strcmp(cmd.argv[0], "quit") || !strcmp(cmd.argv[0], "exit")) {
+        // wait for background processes before closing shell
+        int i;
+        for (i = 0; i < bIndex; i++) {
+            waitpid(backGroundProcesses[i], NULL, 0);
         }
-    }
-    CMD commands[programCount];
-    programCount = get_args(cmdline, commands, &async);
-    if (programCount <= 0) return;
-    if (!strcmp(commands[0].argv[0], "quit") || !strcmp(commands[0].argv[0], "exit")) {
         exit(0);
     }
-    exec_procceses(programCount, commands, async);
+
+    pid = fork();
+    if (pid == 0) { /* child process */
+        execvp(cmd.argv[0], cmd.argv);
+        /* return only when exec fails */
+        perror("exec failed");
+        exit(-1);
+    } else if (pid > 0) { /* parent process */
+        if (cmd.async == 1) {
+            printf("ID %d\n", pid);
+            backGroundProcesses[bIndex] = pid;
+            bIndex++;
+        } else {
+            forGroundProcesses[fIndex] = pid;
+            fIndex++;
+        }
+    } else { /* error occurred */
+        perror("fork failed");
+        exit(1);
+    }
 }
 
 
@@ -208,6 +157,6 @@ int main(int argc, char *argv[]) {
             perror("fgets failed");
             exit(1);
         }
-        execute(cmdline);
+        exec_processes(cmdline);
     }
 }
