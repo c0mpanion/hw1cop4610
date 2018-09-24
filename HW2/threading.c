@@ -14,7 +14,7 @@ void SimpleThread(int which);
 void *myThread(void *i);
 
 void *myThread(void *i) {
-    SimpleThread(*(int *) i);
+    SimpleThread(*((int *) i));
 }
 
 void SimpleThread(int which) {
@@ -39,13 +39,12 @@ int main(int argc, char *argv[]) {
     int i = 0;
 
     if (argc != 2) {
-        printf("Usage: threading <number of threads>");
+        printf("Usage: threading <number of threads>\n");
         exit(1);
     }
 
     numbOfThreads = strtol(argv[1], NULL, 10);
 
-    printf("TH %ld\n", numbOfThreads);
     pthread_t tid[numbOfThreads];
 
     if (pthread_barrier_init(&barrier, NULL, (uint) numbOfThreads) != 0) {
@@ -57,8 +56,10 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    int threadNumber[numbOfThreads];
     for (; i < numbOfThreads; i++) {
-        pthread_create(&tid[i], NULL, myThread, &i);
+        threadNumber[i] = i;
+        pthread_create(&tid[i], NULL, myThread, &threadNumber[i]);
     }
 
     for (i = 0; i < numbOfThreads; i++) {
