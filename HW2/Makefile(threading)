@@ -1,0 +1,7 @@
+CC=gcc
+
+threading :	threading.c
+	$(CC) threading.c -o threading -lpthread
+
+clean:
+	rm threading
