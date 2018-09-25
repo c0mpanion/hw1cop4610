@@ -72,6 +72,13 @@ int get_args(char *cmdline, CMD commands[]) {
             commands[j].argv[i] = 0;
             commands[j].nargs = i;
             commands[j].async = 1;
+        } else if (strcmp(commands[j].argv[i], "&;") == 0) {
+            commands[j].argv[i] = 0;
+            commands[j].nargs = i;
+            commands[j].async = 1;
+            programCount++;
+            j++;
+            i = -1;
         } else if (strcmp(commands[j].argv[i], ";") == 0) {
             commands[j].argv[i] = 0;
             commands[j].nargs = i;
