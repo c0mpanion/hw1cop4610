@@ -5,6 +5,8 @@
 #include <pthread.h>
 #include <unistd.h>
 
+#define PTHREAD_SYNC
+
 int SharedVariable = 0;
 pthread_barrier_t barrier;
 pthread_mutex_t lock;
@@ -19,7 +21,9 @@ void *myThread(void *i) {
 
 void SimpleThread(int which) {
     int num, val;
+#ifdef PTHREAD_SYNC
     pthread_mutex_lock(&lock);
+#endif
     for (num = 0; num < 20; num++) {
         if (random() > RAND_MAX / 2)
             usleep(500);
@@ -27,8 +31,10 @@ void SimpleThread(int which) {
         printf("*** thread %d sees value %d\n", which, val);
         SharedVariable = val + 1;
     }
+#ifdef PTHREAD_SYNC
     pthread_mutex_unlock(&lock);
     pthread_barrier_wait(&barrier);
+#endif
     val = SharedVariable;
     printf("Thread %d sees final value %d\n", which, val);
 }
@@ -38,12 +44,11 @@ int main(int argc, char *argv[]) {
     long numbOfThreads = 0;
     int i = 0;
 
-    if (argc != 2) {
+    // validate user input, number of threads most be a positive value
+    if (argc != 2 || 1 > (numbOfThreads = strtol(argv[1], NULL, 10))) {
         printf("Usage: threading <number of threads>\n");
         exit(1);
     }
-
-    numbOfThreads = strtol(argv[1], NULL, 10);
 
     pthread_t tid[numbOfThreads];
 
