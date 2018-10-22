@@ -53,12 +53,9 @@ void *Mem_Alloc(int size) {
 
             while (curr->next != NULL) {
                 // if there is enough space between nodes, insert here
-
-                if (((void *) (next - (curr + sizeof(struct node) + curr->size))) >
+                if (((void *) next - ((void *) curr + sizeof(struct node) + curr->size)) >
                     (void *) (sizeof(struct node) + size)) {
-                    printf("\nIF CONDITION %p", (void *) (next - (curr + sizeof(struct node) + curr->size)));
-
-                    struct node *temp = (curr->address + curr->size);
+                    struct node *temp = (curr + sizeof(struct node) + curr->size);
                     temp->address = ((void *) temp + sizeof(struct node));
                     temp->size = size;
                     temp->next = next;
@@ -69,12 +66,17 @@ void *Mem_Alloc(int size) {
                     next = next->next;
                 }
             }
-            printf("\nCURR > %p", ((void *) curr + curr->size + sizeof(struct node)));
-            curr->next = ((void *) curr + curr->size + sizeof(struct node));
-            curr = curr->next;
-            curr->address = (sizeof(struct node) + (void *) curr);
-            curr->size = size;
-            return curr->address;
+
+            //if limit address has no been reached
+            if ((((void *) curr + curr->size + sizeof(struct node)) + sizeof(struct node) + size) <= limit) {
+                printf("\nCURR > %p", ((void *) curr + curr->size + sizeof(struct node)));
+                curr->next = ((void *) curr + curr->size + sizeof(struct node));
+                curr = curr->next;
+                curr->address = (sizeof(struct node) + (void *) curr);
+                curr->size = size;
+                return curr->address;
+            }
+            return NULL;
 
 
         } else if (policySet == BEST_FIT) {
@@ -90,7 +92,7 @@ void *Mem_Alloc(int size) {
         head->size = size;
         return head->address;
     }
-    return 0;
+    return NULL;
 }
 
 int main(int argc, char *argv[]) {
@@ -100,12 +102,14 @@ int main(int argc, char *argv[]) {
     } else {
         printf("Failed");
     }
-    printf("\nSIZE >> %d", (int) sizeof(struct node));
+    printf("\nSIZE >> %d\n\n", (int) sizeof(struct node));
 
     void *p = Mem_Alloc(1);
     printf("\nP > %p\n", p);
     void *x = Mem_Alloc(1);
     printf("\nX > %p\n", x);
+
+
     void *c = Mem_Alloc(1);
     printf("\nC > %p\n", c);
     void *v = Mem_Alloc(1);
