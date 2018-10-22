@@ -38,10 +38,9 @@ int Mem_Init(int size, int policy) {
     return 0;
 }
 
+
 void *Mem_Alloc(int size) {
 
-    size_t total;
-    void *block;
     struct node *curr;
     struct node *next;
 
@@ -50,6 +49,14 @@ void *Mem_Alloc(int size) {
         next = head->next;
 
         if (policySet == FIRST_FIT) {
+            //check if there is space between base and head of list
+            if ((void *) curr - base > size) {
+                struct node *temp = (struct node *) base;
+                temp->address = sizeof(struct node) + base;
+                temp->size = size;
+                head = temp;
+                return temp->address;
+            }
 
             while (curr->next != NULL) {
                 // if there is enough space between nodes, insert here
@@ -66,10 +73,8 @@ void *Mem_Alloc(int size) {
                     next = next->next;
                 }
             }
-
             //if limit address has no been reached
-            if ((((void *) curr + curr->size + sizeof(struct node)) + sizeof(struct node) + size) <= limit) {
-                printf("\nCURR > %p", ((void *) curr + curr->size + sizeof(struct node)));
+            if ((((void *) curr + curr->size + sizeof(struct node)) + sizeof(struct node) + size) < limit) {
                 curr->next = ((void *) curr + curr->size + sizeof(struct node));
                 curr = curr->next;
                 curr->address = (sizeof(struct node) + (void *) curr);
@@ -85,7 +90,6 @@ void *Mem_Alloc(int size) {
 
         }
     } else {
-        printf("\nFirst is null");
         head = (struct node *) base;
         // as far as the user is concern, this is the address of his object.
         head->address = sizeof(struct node) + base;
@@ -93,6 +97,47 @@ void *Mem_Alloc(int size) {
         return head->address;
     }
     return NULL;
+}
+
+
+int Mem_Free(void *ptr) {
+    if (ptr == NULL) {
+        return 0;
+    }
+
+    struct node *curr = head;
+    struct node *prev = head;
+
+    // if pointer is at head of list
+    if (curr->address <= ptr && ptr < (curr->address + curr->size)) {
+        head = head->next;
+        return 0;
+    }
+
+    // if pointer is within a node, remove node form list
+    curr = curr->next;
+    while (curr != NULL) {
+        if (curr->address <= ptr && ptr < (curr->address + curr->size)) {
+            prev->next = curr->next;
+            return 0;
+        }
+        curr = curr->next;
+    }
+    return -1;
+}
+
+int Mem_IsValid(void *ptr) {
+    if (ptr == NULL) {
+        return 0;
+    }
+    struct node *curr = head;
+    while (curr != NULL) {
+        if (curr->address <= ptr && ptr < (curr->address + curr->size)) {
+            return 1;
+        }
+        curr = curr->next;
+    }
+    return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -104,9 +149,9 @@ int main(int argc, char *argv[]) {
     }
     printf("\nSIZE >> %d\n\n", (int) sizeof(struct node));
 
-    void *p = Mem_Alloc(1);
+    void *p = Mem_Alloc(50);
     printf("\nP > %p\n", p);
-    void *x = Mem_Alloc(1);
+    void *x = Mem_Alloc(20);
     printf("\nX > %p\n", x);
 
 
@@ -114,5 +159,15 @@ int main(int argc, char *argv[]) {
     printf("\nC > %p\n", c);
     void *v = Mem_Alloc(1);
     printf("\nV > %p\n", v);
+
+    printf("FREE %d\n", Mem_Free(p));
+    printf("IS VALID %d\n", Mem_IsValid(p));
+
+    void *z = Mem_Alloc(65535);
+    void *b = Mem_Alloc(10);
+
+    printf("IS VALID %d\n", Mem_IsValid(z));
+    printf("IS VALID %d\n", Mem_IsValid(b));
+
 
 }
