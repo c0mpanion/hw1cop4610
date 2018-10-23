@@ -73,11 +73,12 @@ void *Mem_Alloc(int size) {
         next = curr->next;
 
         if (policySet == FIRST_FIT) {
+            int fd = open("/dev/zero", O_RDWR);
+            struct node *temp = mmap(NULL, sizeof(struct node), PROT_READ | PROT_WRITE,
+                                     MAP_PRIVATE, fd, 0);
+
             //if fit at head of list
             if ((curr->address - base) > size) {
-                int fd = open("/dev/zero", O_RDWR);
-                struct node *temp = mmap(NULL, sizeof(struct node), PROT_READ | PROT_WRITE,
-                                         MAP_PRIVATE, fd, 0);
                 temp->address = base;
                 temp->size = size;
                 temp->next = curr;
@@ -89,9 +90,6 @@ void *Mem_Alloc(int size) {
             //find space in between nodes
             while (curr->next != NULL) {
                 if (((next->address) - (curr->address + curr->size)) > size) {
-                    int fd = open("/dev/zero", O_RDWR);
-                    struct node *temp = mmap(NULL, sizeof(struct node), PROT_READ | PROT_WRITE,
-                                             MAP_PRIVATE, fd, 0);
                     temp->address = curr->address + curr->size;
                     temp->size = size;
                     temp->next = next;
@@ -102,20 +100,27 @@ void *Mem_Alloc(int size) {
                 curr = curr->next;
                 next = next->next;
             }
-            // space found at end
-            int fd = open("/dev/zero", O_RDWR);
-            struct node *temp = mmap(NULL, sizeof(struct node), PROT_READ | PROT_WRITE,
-                                     MAP_PRIVATE, fd, 0);
-            temp->address = curr->address + curr->size;
-            temp->size = size;
-            temp->next = next;
-            curr->next = temp;
-            memoryList->remainingMemory = memoryList->remainingMemory - size;
-            return temp->address;
+            //if space found at end
+            if (((limit - ((curr->address) + curr->size)) > size)) {
+                curr->next = temp;
+                temp->address = curr->address + curr->size;
+                temp->size = size;
+                temp->next = NULL;
+                memoryList->remainingMemory = memoryList->remainingMemory - size;
+                return temp->address;
+            }
+            // if it gets here, then no space was found, free memory allocated for temp node
+            // since it was not used.
+            munmap(temp, sizeof(struct node));
+            return NULL;
+        }
 
-        } else if (policySet == BEST_FIT) {
+            // **************************************************************** BEST FIT
+        else if (policySet == BEST_FIT) {
             struct node *insertAfter = memoryList->head;
             uint8_t insertAtHead = 0;
+            uint8_t insertInMiddle = 0;
+
             unsigned long smallestSpace = LONG_MAX;
             int fd = open("/dev/zero", O_RDWR);
             struct node *temp = mmap(NULL, sizeof(struct node), PROT_READ | PROT_WRITE,
@@ -133,13 +138,14 @@ void *Mem_Alloc(int size) {
                     insertAfter = curr;
                     smallestSpace = space;
                     insertAtHead = 0;
+                    insertInMiddle = 1;
                 }
                 curr = curr->next;
             }
 
             // insert last if last is smallest space
-            if ((limit - ((curr->address) + curr->size) > size) &&
-                (limit - ((curr->address) + curr->size) < smallestSpace)) {
+            if (((limit - ((curr->address) + curr->size)) > size) &&
+                ((limit - ((curr->address) + curr->size)) < smallestSpace)) {
                 curr->next = temp;
                 temp->address = curr->address + curr->size;
                 temp->size = size;
@@ -147,7 +153,7 @@ void *Mem_Alloc(int size) {
                 memoryList->remainingMemory = memoryList->remainingMemory - size;
                 return temp->address;
             }
-
+            // if space is at beginning of block
             if (insertAtHead) {
                 temp->address = base;
                 temp->size = size;
@@ -156,8 +162,8 @@ void *Mem_Alloc(int size) {
                 memoryList->remainingMemory = memoryList->remainingMemory - size;
                 return memoryList->head->address;
             }
-                // found space in between
-            else {
+            // found space in between
+            if (insertInMiddle) {
                 temp->address = insertAfter->address + insertAfter->size;
                 temp->size = size;
                 temp->next = insertAfter->next;
@@ -165,10 +171,70 @@ void *Mem_Alloc(int size) {
                 memoryList->remainingMemory = memoryList->remainingMemory - size;
                 return temp->address;
             }
+            // if it gets here, then no space was found, free memory allocated for temp node
+            // since it was not used.
+            munmap(temp, sizeof(struct node));
+            return NULL;
+        }
+            // **************************************************************** WORST FIT
+        else if (policySet == WORST_FIT) {
+            struct node *insertAfter = memoryList->head;
+            uint8_t insertAtHead = 0;
+            uint8_t insertInMiddle = 0;
 
+            long largestSpace = LONG_MIN;
+            int fd = open("/dev/zero", O_RDWR);
+            struct node *temp = mmap(NULL, sizeof(struct node), PROT_READ | PROT_WRITE,
+                                     MAP_PRIVATE, fd, 0);
 
-        } else if (policySet == WORST_FIT) {
-
+            //check if there is space at beginning of block
+            if ((curr->address - base) > size) {
+                insertAtHead = 1;
+                largestSpace = curr->address - base;
+            }
+            //check if there is a better fit
+            while (curr->next != NULL) {
+                unsigned long space = ((curr->next->address) - (curr->address + curr->size));
+                if (space > size && space > largestSpace) {
+                    insertAfter = curr;
+                    largestSpace = space;
+                    insertAtHead = 0;
+                    insertInMiddle = 1;
+                }
+                curr = curr->next;
+            }
+            // insert last if last is smallest space
+            if (((limit - ((curr->address) + curr->size)) > size) &&
+                ((limit - ((curr->address) + curr->size)) > largestSpace)) {
+                curr->next = temp;
+                temp->address = curr->address + curr->size;
+                temp->size = size;
+                temp->next = NULL;
+                memoryList->remainingMemory = memoryList->remainingMemory - size;
+                return temp->address;
+            }
+            // if space is at beginning of block
+            if (insertAtHead) {
+                temp->address = base;
+                temp->size = size;
+                temp->next = memoryList->head;
+                memoryList->head = temp;
+                memoryList->remainingMemory = memoryList->remainingMemory - size;
+                return memoryList->head->address;
+            }
+            // found space in between
+            if (insertInMiddle) {
+                temp->address = insertAfter->address + insertAfter->size;
+                temp->size = size;
+                temp->next = insertAfter->next;
+                insertAfter->next = temp;
+                memoryList->remainingMemory = memoryList->remainingMemory - size;
+                return temp->address;
+            }
+            // if it gets here, then no space was found, free memory allocated for temp node
+            // since it was not used.
+            munmap(temp, sizeof(struct node));
+            return NULL;
         }
     }
         //memoryList is empty and requested fits
@@ -234,7 +300,7 @@ int Mem_IsValid(void *ptr) {
 
 int main(int argc, char *argv[]) {
 
-    if (!Mem_Init(1, 1)) {
+    if (!Mem_Init(1, WORST_FIT)) {
         printf("\nBASE >> %p, LIMIT %p\n", base, limit);
     } else {
         printf("Failed");
@@ -273,8 +339,10 @@ int main(int argc, char *argv[]) {
     void *N = Mem_Alloc(50);
     printf("\nN > %lu\n", (unsigned long) N % 1000);
 
-    void *H = Mem_Alloc(30);
+    void *H = Mem_Alloc(65450);
     printf("\nH > %lu\n", (unsigned long) H % 1000);
+
+    printf("MEMORY %lu\n", memoryList->remainingMemory);
 ////**********************************************************************
 
 
