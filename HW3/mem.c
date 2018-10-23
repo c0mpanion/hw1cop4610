@@ -4,12 +4,10 @@
 #include <math.h>
 #include <limits.h>
 #include <sys/fcntl.h>
+#include "mem.h"
 
-#define FIRST_FIT 0
-#define BEST_FIT 1
-#define WORST_FIT 2
 
-int policySet = FIRST_FIT; // default policy
+int policySet = MEM_POLICY_FIRSTFIT; // default policy
 uint8_t initFlag = 0;
 void *base = NULL;
 void *limit = NULL;
@@ -57,7 +55,6 @@ int Mem_Init(int size, int policy) {
     return 0;
 }
 
-
 void *Mem_Alloc(int size) {
 
     struct node *curr;
@@ -72,7 +69,7 @@ void *Mem_Alloc(int size) {
         curr = memoryList->head;
         next = curr->next;
 
-        if (policySet == FIRST_FIT) {
+        if (policySet == MEM_POLICY_FIRSTFIT) {
             int fd = open("/dev/zero", O_RDWR);
             struct node *temp = mmap(NULL, sizeof(struct node), PROT_READ | PROT_WRITE,
                                      MAP_PRIVATE, fd, 0);
@@ -116,7 +113,7 @@ void *Mem_Alloc(int size) {
         }
 
             // **************************************************************** BEST FIT
-        else if (policySet == BEST_FIT) {
+        else if (policySet == MEM_POLICY_BESTFIT) {
             struct node *insertAfter = memoryList->head;
             uint8_t insertAtHead = 0;
             uint8_t insertInMiddle = 0;
@@ -177,7 +174,7 @@ void *Mem_Alloc(int size) {
             return NULL;
         }
             // **************************************************************** WORST FIT
-        else if (policySet == WORST_FIT) {
+        else if (policySet == MEM_POLICY_WORSTFIT) {
             struct node *insertAfter = memoryList->head;
             uint8_t insertAtHead = 0;
             uint8_t insertInMiddle = 0;
@@ -298,54 +295,101 @@ int Mem_IsValid(void *ptr) {
     return 0;
 }
 
-int main(int argc, char *argv[]) {
-
-    if (!Mem_Init(1, WORST_FIT)) {
-        printf("\nBASE >> %p, LIMIT %p\n", base, limit);
-    } else {
-        printf("Failed");
+int Mem_GetSize(void *ptr) {
+    if (ptr == NULL) {
+        return -1;
     }
-    if (!Mem_Init(66000, 0)) {
-        printf("\nBASE >> %p, LIMIT %p\n", base, limit);
-    } else {
-        printf("Failed");
+    struct node *curr = memoryList->head;
+    while (curr != NULL) {
+        if (curr->address <= ptr && ptr < (curr->address + curr->size)) {
+            return curr->size;
+        }
+        curr = curr->next;
     }
-    printf("\nSIZE >> %zu\n\n", sizeof(struct node));
-
-
-
-
-//**********************************************************************
-
-    void *p = Mem_Alloc(20);
-
-    printf("\nP > %lu\n", (unsigned long) p % 1000);
-
-    void *a = Mem_Alloc(1);
-    printf("\nA > %lu\n", (unsigned long) a % 1000);
-
-    void *z = Mem_Alloc(2);
-    printf("\nZ > %lu\n", (unsigned long) z % 1000);
-
-    printf("FREE P %d\n", Mem_Free(p));
-
-    printf("IS VALID P %d\n", Mem_IsValid(p));
-
-
-    void *l = Mem_Alloc(10);
-    printf("\nL > %lu\n", (unsigned long) l % 1000);
-
-
-    void *N = Mem_Alloc(50);
-    printf("\nN > %lu\n", (unsigned long) N % 1000);
-
-    void *H = Mem_Alloc(65450);
-    printf("\nH > %lu\n", (unsigned long) H % 1000);
-
-    printf("MEMORY %lu\n", memoryList->remainingMemory);
-////**********************************************************************
-
-
-    munmap(base, limit - base);
-
+    return -1;
 }
+
+float Mem_GetFragmentation() {
+    unsigned long largest = 0;
+    struct node *curr = memoryList->head;
+
+    // if no free space
+    if (!(memoryList->remainingMemory)) {
+        return 1;
+    }
+
+    if ((curr->address - base) > largest) {
+        largest = (curr->address - base);
+    }
+
+    while (curr->next != NULL) {
+        unsigned long space = (curr->next->address) - (curr->address + curr->size);
+        if (space > largest) {
+            largest = space;
+        }
+        curr = curr->next;
+    }
+    // check end of block
+    if ((limit - (curr->address + curr->size)) > largest) {
+        largest = (limit - (curr->address + curr->size));
+    }
+    return (float) largest / (float) memoryList->remainingMemory;
+}
+
+//
+//int main(int argc, char *argv[]) {
+//
+//    if (!Mem_Init(1, WORST_FIT)) {
+//        printf("\nBASE >> %p, LIMIT %p\n", base, limit);
+//    } else {
+//        printf("Failed");
+//    }
+//    if (!Mem_Init(66000, 0)) {
+//        printf("\nBASE >> %p, LIMIT %p\n", base, limit);
+//    } else {
+//        printf("Failed");
+//    }
+//    printf("\nSIZE >> %zu\n\n", sizeof(struct node));
+//
+//
+//
+//
+////**********************************************************************
+//
+//    void *p = Mem_Alloc(20);
+//
+//    printf("\nP > %lu\n", (unsigned long) p % 1000);
+//
+//    void *a = Mem_Alloc(1);
+//    printf("\nA > %lu\n", (unsigned long) a % 1000);
+//
+//    void *z = Mem_Alloc(2);
+//    printf("\nZ > %lu\n", (unsigned long) z % 1000);
+//
+//    printf("FREE P %d\n", Mem_Free(p));
+//
+//    printf("IS VALID P %d\n", Mem_IsValid(p));
+//
+//
+//    void *l = Mem_Alloc(10);
+//    printf("\nL > %lu\n", (unsigned long) l % 1000);
+//
+//
+//    void *N = Mem_Alloc(50);
+//    printf("\nN > %lu\n", (unsigned long) N % 1000);
+//
+//    void *H = Mem_Alloc(65450);
+//    printf("\nH > %lu\n", (unsigned long) H % 1000);
+//
+//    printf("GET SIZE %d\n", Mem_GetSize(H + 500));
+//
+//    printf("MEMORY %lu\n", memoryList->remainingMemory);
+//
+//    printf("FRAG %.5f\n", Mem_GetFragmentation());
+//
+//////**********************************************************************
+//
+//
+//    munmap(base, limit - base);
+//
+//}
