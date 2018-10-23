@@ -114,6 +114,58 @@ void *Mem_Alloc(int size) {
             return temp->address;
 
         } else if (policySet == BEST_FIT) {
+            struct node *insertAfter = memoryList->head;
+            uint8_t insertAtHead = 0;
+            unsigned long smallestSpace = LONG_MAX;
+            int fd = open("/dev/zero", O_RDWR);
+            struct node *temp = mmap(NULL, sizeof(struct node), PROT_READ | PROT_WRITE,
+                                     MAP_PRIVATE, fd, 0);
+
+            //check if there is space at beginning of block
+            if ((curr->address - base) > size) {
+                insertAtHead = 1;
+                smallestSpace = curr->address - base;
+            }
+            //check if there is a better fit
+            while (curr->next != NULL) {
+                unsigned long space = ((curr->next->address) - (curr->address + curr->size));
+                if (space > size && space < smallestSpace) {
+                    insertAfter = curr;
+                    smallestSpace = space;
+                    insertAtHead = 0;
+                }
+                curr = curr->next;
+            }
+
+            // insert last if last is smallest space
+            if ((limit - ((curr->address) + curr->size) > size) &&
+                (limit - ((curr->address) + curr->size) < smallestSpace)) {
+                curr->next = temp;
+                temp->address = curr->address + curr->size;
+                temp->size = size;
+                temp->next = NULL;
+                memoryList->remainingMemory = memoryList->remainingMemory - size;
+                return temp->address;
+            }
+
+            if (insertAtHead) {
+                temp->address = base;
+                temp->size = size;
+                temp->next = memoryList->head;
+                memoryList->head = temp;
+                memoryList->remainingMemory = memoryList->remainingMemory - size;
+                return memoryList->head->address;
+            }
+                // found space in between
+            else {
+                temp->address = insertAfter->address + insertAfter->size;
+                temp->size = size;
+                temp->next = insertAfter->next;
+                insertAfter->next = temp;
+                memoryList->remainingMemory = memoryList->remainingMemory - size;
+                return temp->address;
+            }
+
 
         } else if (policySet == WORST_FIT) {
 
@@ -137,7 +189,6 @@ void *Mem_Alloc(int size) {
     return NULL;
 }
 
-//
 int Mem_Free(void *ptr) {
     if (ptr == NULL) {
         return 0;
@@ -166,24 +217,24 @@ int Mem_Free(void *ptr) {
     }
     return -1;
 }
-//
-//int Mem_IsValid(void *ptr) {
-//    if (ptr == NULL) {
-//        return 0;
-//    }
-//    struct node *curr = head;
-//    while (curr != NULL) {
-//        if (curr->address <= ptr && ptr < (curr->address + curr->size)) {
-//            return 1;
-//        }
-//        curr = curr->next;
-//    }
-//    return 0;
-//}
+
+int Mem_IsValid(void *ptr) {
+    if (ptr == NULL) {
+        return 0;
+    }
+    struct node *curr = memoryList->head;
+    while (curr != NULL) {
+        if (curr->address <= ptr && ptr < (curr->address + curr->size)) {
+            return 1;
+        }
+        curr = curr->next;
+    }
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
 
-    if (!Mem_Init(1, 0)) {
+    if (!Mem_Init(1, 1)) {
         printf("\nBASE >> %p, LIMIT %p\n", base, limit);
     } else {
         printf("Failed");
@@ -201,25 +252,29 @@ int main(int argc, char *argv[]) {
 //**********************************************************************
 
     void *p = Mem_Alloc(20);
-    printf("\nP > %lu\n", (unsigned long) p);
-    printf("\nPAGE SIZE > %d\n", getpagesize());
+
+    printf("\nP > %lu\n", (unsigned long) p % 1000);
 
     void *a = Mem_Alloc(1);
-    printf("\nA > %lu\n", (unsigned long) a);
+    printf("\nA > %lu\n", (unsigned long) a % 1000);
 
     void *z = Mem_Alloc(2);
-    printf("\nZ > %lu\n", (unsigned long) z);
+    printf("\nZ > %lu\n", (unsigned long) z % 1000);
 
-    printf("FREE P %lu\n", Mem_Free(p));
+    printf("FREE P %d\n", Mem_Free(p));
+
+    printf("IS VALID P %d\n", Mem_IsValid(p));
 
 
     void *l = Mem_Alloc(10);
-    printf("\nL > %lu\n", (unsigned long) l);
+    printf("\nL > %lu\n", (unsigned long) l % 1000);
 
 
     void *N = Mem_Alloc(50);
-    printf("\nN > %lu\n", (unsigned long) N);
+    printf("\nN > %lu\n", (unsigned long) N % 1000);
 
+    void *H = Mem_Alloc(30);
+    printf("\nH > %lu\n", (unsigned long) H % 1000);
 ////**********************************************************************
 
 
