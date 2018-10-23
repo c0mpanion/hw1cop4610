@@ -4,6 +4,7 @@
 #include <math.h>
 #include <limits.h>
 #include <sys/fcntl.h>
+#include <stdint.h>
 #include "mem.h"
 
 
@@ -56,6 +57,8 @@ int Mem_Init(int size, int policy) {
 }
 
 void *Mem_Alloc(int size) {
+    // check if Mem_Init was called already
+    if (!initFlag) { return NULL; }
 
     struct node *curr;
     struct node *next;
@@ -253,7 +256,8 @@ void *Mem_Alloc(int size) {
 }
 
 int Mem_Free(void *ptr) {
-    if (ptr == NULL) {
+    //if pointer is null or list is empty
+    if (ptr == NULL || memoryList == NULL) {
         return 0;
     }
     struct node *curr = memoryList->head;
@@ -261,10 +265,20 @@ int Mem_Free(void *ptr) {
     // if pointer is at head of memoryList
     if (curr->address <= ptr && ptr < (curr->address + curr->size)) {
         memoryList->remainingMemory = memoryList->remainingMemory + curr->size;
-        struct node *temp = memoryList->head->next;
-        munmap(curr, sizeof(struct node));
-        memoryList->head = temp;
-        return 0;
+        //if more than one node remains
+        if (memoryList->head->next != NULL) {
+            struct node *temp = memoryList->head->next;
+            munmap(curr, sizeof(struct node));
+            memoryList->head = temp;
+            return 0;
+        }
+            // if last node, deallocate all memory
+        else {
+            munmap(memoryList->head, sizeof(struct node));
+            munmap(memoryList, sizeof(struct list));
+            memoryList = (void *) 0;
+            return 0;
+        }
     }
     // if pointer is within a node, remove node form memoryList
     curr = curr->next;
@@ -282,7 +296,7 @@ int Mem_Free(void *ptr) {
 }
 
 int Mem_IsValid(void *ptr) {
-    if (ptr == NULL) {
+    if (ptr == NULL || memoryList == NULL) {
         return 0;
     }
     struct node *curr = memoryList->head;
@@ -296,7 +310,7 @@ int Mem_IsValid(void *ptr) {
 }
 
 int Mem_GetSize(void *ptr) {
-    if (ptr == NULL) {
+    if (ptr == NULL || memoryList == NULL) {
         return -1;
     }
     struct node *curr = memoryList->head;
@@ -310,9 +324,12 @@ int Mem_GetSize(void *ptr) {
 }
 
 float Mem_GetFragmentation() {
+    //memory block is empty
+    if (memoryList == NULL) {
+        return 1;
+    }
     unsigned long largest = 0;
     struct node *curr = memoryList->head;
-
     // if no free space
     if (!(memoryList->remainingMemory)) {
         return 1;
