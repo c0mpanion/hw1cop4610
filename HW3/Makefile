@@ -1,14 +1,11 @@
-CFLAGS := -fPIC 
-CC := gcc
+all: libmem test
 
-test: testmem
-	LD_LIBRARY_PATH=. ./testmem
-
-testmem: libmem.so
-	$(CC) testmem.c -lmem -lm -L. -o testmem 
-
-libmem.so: mem.o
+libmem:
+	$(CC) -c -fpic mem.c
 	$(CC) -shared -o libmem.so mem.o
 
+test:
+	$(CC) testmem.c -lmem -lm -L. -o testmem
+
 clean:
-	$(RM) *.o *.so*
+	rm *.so *.o testmem
