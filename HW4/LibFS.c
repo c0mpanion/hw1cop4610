@@ -142,7 +142,7 @@ static void bitmap_init(int start, int num, int nbits) {
                     buffer[numOfCharsToSet] |= 1;
                     nbits--;
                 }
-                buffer[numOfCharsToSet] = buffer[numOfCharsToSet] << (char) 1;
+                buffer[numOfCharsToSet] = buffer[numOfCharsToSet] << 1;
             }
         }
         Disk_Write(start + i, buffer);
@@ -155,13 +155,15 @@ static void bitmap_init(int start, int num, int nbits) {
 static int bitmap_first_unused(int start, int num, int nbits) {
     char buffer[SECTOR_SIZE];
     // read each sector until zero bit it's found
-    for (int i = 0; i < num - 1; i++) {
+    for (int i = 0; i < num; i++) {
         Disk_Read(start + i, buffer);
         // iterate over each char
         for (int j = 0; j < SECTOR_SIZE; j++) {
-            // iterate over each bit on the char
-            for (int k = 7; k >= 0; k--) {
+            // iterate over each bit on the char and track
+            // how many bits have been checked so far
+            for (int k = 7; k >= 0 && nbits > 0; k--) {
                 int zero = (buffer[j] >> k) & 1;
+                nbits--;
                 // found a zero
                 if (!zero) {
                     int mask = 1;
@@ -171,23 +173,6 @@ static int bitmap_first_unused(int start, int num, int nbits) {
                     // return position
                     return (i * SECTOR_SIZE * 8) + (j * 8) + (7 - k);
                 }
-            }
-        }
-    }
-    // if execution reaches here. We are on the last block of the bitmap space
-    // check remaining bits on last block
-    Disk_Read(num - 1, buffer);
-    for (int l = 0; l < nbits - ((num - 1) * (SECTOR_SIZE * 8)); l++) {
-        for (int k = 7; k >= 0; k--) {
-            int zero = (buffer[l] >> k) & 1;
-            // found a zero
-            if (!zero) {
-                int mask = 1;
-                mask = mask << k;
-                buffer[l] |= mask; // set bit to 1
-                Disk_Write(num - 1, buffer);
-                // return position
-                return ((num - 1) * SECTOR_SIZE * 8) + (l * 8) + (7 - k);
             }
         }
     }
