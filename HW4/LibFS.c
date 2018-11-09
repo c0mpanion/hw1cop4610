@@ -8,7 +8,7 @@
 
 // set to 1 to have detailed debug print-outs and 0 to have none
 #define FSDEBUG 0
-
+#define BYTE 8
 #if FSDEBUG
 #define dprintf printf
 #else
@@ -182,9 +182,22 @@ static int bitmap_first_unused(int start, int num, int nbits) {
 // reset the i-th bit of a bitmap with 'num' sectors starting from
 // 'start' sector; return 0 if successful, -1 otherwise
 static int bitmap_reset(int start, int num, int ibit) {
-// TODO left here
+    char buffer[SECTOR_SIZE];
 
-    return -1;
+    int sector = ibit / (SECTOR_SIZE * BYTE); // get sector
+    int byte = (ibit - (sector * (SECTOR_SIZE * BYTE))) / BYTE; // get byte/char position
+    int bit = ibit - (byte * BYTE) - (sector * (SECTOR_SIZE * BYTE)); // get bit specific position
+
+    // check if ibit is within boundaries
+    if (sector >= num) {
+        return -1;
+    }
+
+    Disk_Read(start + sector, buffer);
+    // clear i-th bit
+    buffer[byte] &= ~(1 << (7 - bit));
+    // write changes to disk
+    return Disk_Write(start + sector, buffer);
 }
 
 // return 1 if the file name is illegal; otherwise, return 0; legal
