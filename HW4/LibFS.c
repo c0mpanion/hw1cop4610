@@ -205,7 +205,21 @@ static int bitmap_reset(int start, int num, int ibit) {
 // numbers, dots, dashes, and underscores; and a legal file name
 // should not be more than MAX_NAME-1 in length
 static int illegal_filename(char *name) {
-    /* YOUR CODE */
+    char *temp = name;
+    int length = strlen(temp);
+    int counter = 0;
+  
+    if (length > MAX_NAME-1)
+      return 0;
+      
+    while (counter < length)
+    {
+      if ((isalpha(temp[counter])) || (isdigit(temp[counter])) || (temp[counter] == '_') || (temp[counter] == '.') || 
+      (temp[counter] == '-'))
+        counter++;
+      else
+        return 0;
+    }
     return 1;
 }
 
