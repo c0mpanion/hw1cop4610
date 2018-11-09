@@ -205,8 +205,21 @@ static int bitmap_reset(int start, int num, int ibit) {
 // numbers, dots, dashes, and underscores; and a legal file name
 // should not be more than MAX_NAME-1 in length
 static int illegal_filename(char *name) {
-    /* YOUR CODE */
-    return 1;
+    // if name larger than allowed or empty string
+    if ((strlen(name) > MAX_NAME - 1) || strlen(name) == 0) {
+        return 1;
+    }
+    for (int i = 0; i < strlen(name); i++) {
+        char c = name[i];
+        // check if valid char
+        if (!((c >= '0' && c <= '9') ||
+              (c >= 'a' && c <= 'z') ||
+              (c >= 'A' && c <= 'Z') ||
+              (c == '.' || c == '-' || c == '_'))) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 // return the child inode of the given file name 'fname' from the
@@ -442,7 +455,60 @@ int create_file_or_directory(int type, char *pathname) {
 // File_Unlink() and Dir_Unlink(); the function returns 0 if success,
 // -1 if general error, -2 if directory not empty, -3 if wrong type
 int remove_inode(int type, int parent_inode, int child_inode) {
-    /* YOUR CODE */
+    // TODO #2
+    char parentBuffer[SECTOR_SIZE];
+    char childBuffer[SECTOR_SIZE];
+
+    inode_t *parent;
+    inode_t *child;
+
+    // read sectors containing parent and child
+    Disk_Read(INODE_TABLE_START_SECTOR + (parent_inode / INODES_PER_SECTOR), parentBuffer);
+    Disk_Read(INODE_TABLE_START_SECTOR + (child_inode / INODES_PER_SECTOR), childBuffer);
+
+    // calculate offset within the sector
+    int parentOffSet = parent_inode - (parent_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
+    int childOffSet = child_inode - (child_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
+
+    parent = (inode_t *) &parentBuffer[parentOffSet * 128];
+    child = (inode_t *) &childBuffer[childOffSet * 128];
+
+    // if child type doesnt match or parent is not dir
+    if (child->type != type || parent->type != 1) {
+        return -3;
+    }
+        // child is a directory and it is not empty
+    else if (child->type == 1 && child->size > 0) {
+        return -2;
+    }
+
+    for (int dataBlock = 0; dataBlock < MAX_SECTORS_PER_FILE; dataBlock++) {
+        char block[SECTOR_SIZE];
+        Disk_Read(parent->data[dataBlock], block);
+
+        // check each file/dir entry to see if it matches child_inode
+        for (int i = 0; i < DIRENTS_PER_SECTOR; i++) {
+            dirent_t *file = (dirent_t *) &block[i * 20];
+
+            // if found
+            if (file->inode == child_inode) {
+                // remove file entry
+                memset(file, 0, sizeof(dirent_t));
+                // clear bit at inode bitmap
+                bitmap_reset(INODE_BITMAP_START_SECTOR, INODE_BITMAP_SECTORS, child_inode);
+
+                // clear every block associated with file
+                for (int childSector = 0; childSector < MAX_SECTORS_PER_FILE; childSector++) {
+                    char *clearingBuffer = calloc(SECTOR_SIZE, sizeof(char));
+                    Disk_Write(child->data[childSector], clearingBuffer);
+                }
+                //clear child inode
+                memset(child, 0, sizeof(inode_t));
+                // successful removal of child
+                return 0;
+            }
+        }
+    }
     return -1;
 }
 
@@ -612,6 +678,7 @@ int File_Create(char *file) {
 
 int File_Unlink(char *file) {
     /* YOUR CODE */
+    // TODO #3
     return -1;
 }
 
@@ -664,16 +731,19 @@ int File_Open(char *file) {
 
 int File_Read(int fd, void *buffer, int size) {
     /* YOUR CODE */
+    // TODO #4
     return -1;
 }
 
 int File_Write(int fd, void *buffer, int size) {
     /* YOUR CODE */
+    // TODO #5
     return -1;
 }
 
 int File_Seek(int fd, int offset) {
     /* YOUR CODE */
+    // TODO #6
     return 0;
 }
 
@@ -702,16 +772,23 @@ int Dir_Create(char *path) {
 
 int Dir_Unlink(char *path) {
     /* YOUR CODE */
+    // TODO #7
     return -1;
 }
 
 int Dir_Size(char *path) {
     /* YOUR CODE */
+    // TODO #8
     return 0;
 }
 
 int Dir_Read(char *path, void *buffer, int size) {
     /* YOUR CODE */
+    // TODO #9
     return -1;
 }
 
+
+int main() {
+    printf("%d", (int) sizeof(dirent_t));
+}
