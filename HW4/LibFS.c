@@ -205,7 +205,6 @@ static int bitmap_reset(int start, int num, int ibit) {
 // numbers, dots, dashes, and underscores; and a legal file name
 // should not be more than MAX_NAME-1 in length
 static int illegal_filename(char *name) {
-<<<<<<< HEAD
     // if name larger than allowed or empty string
     if ((strlen(name) > MAX_NAME - 1) || strlen(name) == 0) {
         return 1;
@@ -221,24 +220,6 @@ static int illegal_filename(char *name) {
         }
     }
     return 0;
-=======
-    char *temp = name;
-    int length = strlen(temp);
-    int counter = 0;
-  
-    if (length > MAX_NAME-1)
-      return 0;
-      
-    while (counter < length)
-    {
-      if ((isalpha(temp[counter])) || (isdigit(temp[counter])) || (temp[counter] == '_') || (temp[counter] == '.') || 
-      (temp[counter] == '-'))
-        counter++;
-      else
-        return 0;
-    }
-    return 1;
->>>>>>> fd1c926d738b9364d5b8a74a2f749f6e5d18976e
 }
 
 // return the child inode of the given file name 'fname' from the
@@ -474,7 +455,7 @@ int create_file_or_directory(int type, char *pathname) {
 // File_Unlink() and Dir_Unlink(); the function returns 0 if success,
 // -1 if general error, -2 if directory not empty, -3 if wrong type
 int remove_inode(int type, int parent_inode, int child_inode) {
-    // TODO #2
+    // TODO # remove inode
     char parentBuffer[SECTOR_SIZE];
     char childBuffer[SECTOR_SIZE];
 
@@ -489,8 +470,8 @@ int remove_inode(int type, int parent_inode, int child_inode) {
     int parentOffSet = parent_inode - (parent_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
     int childOffSet = child_inode - (child_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
 
-    parent = (inode_t *) &parentBuffer[parentOffSet * 128];
-    child = (inode_t *) &childBuffer[childOffSet * 128];
+    parent = (inode_t *) &parentBuffer[parentOffSet * sizeof(inode_t)];
+    child = (inode_t *) &childBuffer[childOffSet * sizeof(inode_t)];
 
     // if child type doesnt match or parent is not dir
     if (child->type != type || parent->type != 1) {
@@ -507,7 +488,7 @@ int remove_inode(int type, int parent_inode, int child_inode) {
 
         // check each file/dir entry to see if it matches child_inode
         for (int i = 0; i < DIRENTS_PER_SECTOR; i++) {
-            dirent_t *file = (dirent_t *) &block[i * 20];
+            dirent_t *file = (dirent_t *) &block[i * sizeof(dirent_t)];
 
             // if found
             if (file->inode == child_inode) {
@@ -515,6 +496,9 @@ int remove_inode(int type, int parent_inode, int child_inode) {
                 memset(file, 0, sizeof(dirent_t));
                 // clear bit at inode bitmap
                 bitmap_reset(INODE_BITMAP_START_SECTOR, INODE_BITMAP_SECTORS, child_inode);
+
+                // save changes to disk
+                Disk_Write(parent->data[dataBlock], block);
 
                 // clear every block associated with file
                 for (int childSector = 0; childSector < MAX_SECTORS_PER_FILE; childSector++) {
@@ -524,6 +508,7 @@ int remove_inode(int type, int parent_inode, int child_inode) {
                 //clear child inode
                 memset(child, 0, sizeof(inode_t));
                 // successful removal of child
+                Disk_Write(INODE_TABLE_START_SECTOR + (child_inode / INODES_PER_SECTOR), childBuffer);
                 return 0;
             }
         }
