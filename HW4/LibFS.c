@@ -470,8 +470,8 @@ int remove_inode(int type, int parent_inode, int child_inode) {
     int parentOffSet = parent_inode - (parent_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
     int childOffSet = child_inode - (child_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
 
-    parent = (inode_t *) &parentBuffer[parentOffSet * sizeof(inode_t)];
-    child = (inode_t *) &childBuffer[childOffSet * sizeof(inode_t)];
+    parent = (inode_t *) parentBuffer + parentOffSet;
+    child = (inode_t *) childBuffer + childOffSet;
 
     // if child type doesnt match or parent is not dir
     if (child->type != type || parent->type != 1) {
@@ -488,7 +488,7 @@ int remove_inode(int type, int parent_inode, int child_inode) {
 
         // check each file/dir entry to see if it matches child_inode
         for (int i = 0; i < DIRENTS_PER_SECTOR; i++) {
-            dirent_t *file = (dirent_t *) &block[i * sizeof(dirent_t)];
+            dirent_t *file = (dirent_t *) block + (i * sizeof(dirent_t));
 
             // if found
             if (file->inode == child_inode) {
@@ -498,13 +498,17 @@ int remove_inode(int type, int parent_inode, int child_inode) {
                 bitmap_reset(INODE_BITMAP_START_SECTOR, INODE_BITMAP_SECTORS, child_inode);
 
                 // save changes to disk
+                parent->size--;
                 Disk_Write(parent->data[dataBlock], block);
+                Disk_Write(INODE_TABLE_START_SECTOR + (parent_inode / INODES_PER_SECTOR), parentBuffer);
 
                 // clear every block associated with file
+                char *clearingBuffer = calloc(SECTOR_SIZE, sizeof(char));
                 for (int childSector = 0; childSector < MAX_SECTORS_PER_FILE; childSector++) {
-                    char *clearingBuffer = calloc(SECTOR_SIZE, sizeof(char));
+                    bitmap_reset(SECTOR_BITMAP_START_SECTOR, SECTOR_BITMAP_SECTORS, child->data[childSector]);
                     Disk_Write(child->data[childSector], clearingBuffer);
                 }
+                free(clearingBuffer);
                 //clear child inode
                 memset(child, 0, sizeof(inode_t));
                 // successful removal of child
@@ -680,9 +684,27 @@ int File_Create(char *file) {
     return create_file_or_directory(0, file);
 }
 
+
+/**
+ * This function is the opposite of File_Create(). This function should delete the file
+ * referenced by file, including removing its name from the directory it is in, and
+ * freeing up any data blocks and inodes that the file has been using. If the file does
+ * not currently exist, return -1 and set osErrno to E_NO_SUCH_FILE. If the file is
+ * currently open, return -1 and set osErrno to E_FILE_IN_USE (and do NOT
+ * delete the file). Upon success, return 0.
+ * @param file
+ * @return
+ */
 int File_Unlink(char *file) {
     /* YOUR CODE */
     // TODO #3
+
+    if (illegal_filename(file)) {
+        osErrno = E_NO_SUCH_FILE;
+        return -1;
+    }
+
+
     return -1;
 }
 
@@ -790,9 +812,4 @@ int Dir_Read(char *path, void *buffer, int size) {
     /* YOUR CODE */
     // TODO #9
     return -1;
-}
-
-
-int main() {
-    printf("%d", (int) sizeof(dirent_t));
 }
