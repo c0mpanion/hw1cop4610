@@ -807,9 +807,63 @@ int File_Read(int fd, void *buffer, int size) {
 }
 
 int File_Write(int fd, void *buffer, int size) {
-    /* YOUR CODE */
-    // TODO #5
-    return -1;
+    // TODO File_Write
+    int bytesWriten = size;
+    open_file_t openFileEntry = open_files[fd];
+    //check if file is not open
+    if (openFileEntry.inode == 0) {
+        dprintf("... file not open");
+        osErrno = E_BAD_FD;
+        return -1;
+    }
+    // check if there is enough space
+    if ((openFileEntry.size + size) > MAX_FILE_SIZE) {
+        dprintf("... file is too big.");
+        osErrno = E_FILE_TOO_BIG;
+        return -1;
+    }
+    char sectorBuffer[SECTOR_SIZE];
+    inode_t *fileInode;
+    // read sector containing inode
+    Disk_Read(INODE_TABLE_START_SECTOR + (openFileEntry.inode / INODES_PER_SECTOR), sectorBuffer);
+    // calculate offset within the sector
+    int offset = openFileEntry.inode - (openFileEntry.inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
+
+    fileInode = (inode_t *) sectorBuffer + offset;
+    int sectorsNeeded = (size / SECTOR_SIZE) + 1;
+
+    // request free sectors and write
+    for (int i = 0; i < sectorsNeeded; i++) {
+        char sector[SECTOR_SIZE];
+        int sectorIndex = bitmap_first_unused(SECTOR_BITMAP_START_SECTOR, SECTOR_BITMAP_SECTORS, SECTOR_BITMAP_SIZE);
+
+        // if no sectors left
+        if (sectorIndex < 0) {
+            osErrno = E_NO_SPACE;
+            dprintf("... no space left.");
+            Disk_Write(INODE_TABLE_START_SECTOR + (openFileEntry.inode / INODES_PER_SECTOR), sectorBuffer);
+            return -1;
+        }
+        fileInode->data[i] = sectorIndex;
+        Disk_Read(DATABLOCK_START_SECTOR + sectorIndex, sector);
+
+        // write buffer to sector. Buffer might be bigger than sector
+        // need to request more sectors
+        if (size > SECTOR_SIZE) {
+            size -= SECTOR_SIZE;
+            memcpy(sector, buffer, SECTOR_SIZE);
+            fileInode->size += SECTOR_SIZE;
+        } else {
+            memcpy(sector, buffer, (size_t) size);
+            fileInode->size += size;
+            size = 0;
+        }
+        openFileEntry.size = fileInode->size;
+        openFileEntry.pos = fileInode->size;
+        Disk_Write(DATABLOCK_START_SECTOR + sectorIndex, sector);
+    }
+    Disk_Write(INODE_TABLE_START_SECTOR + (openFileEntry.inode / INODES_PER_SECTOR), sectorBuffer);
+    return bytesWriten - size;
 }
 
 int File_Seek(int fd, int offset) {
