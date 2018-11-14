@@ -1,4 +1,4 @@
-CC     = gcc
+CC     = gcc -std=gnu99
 OPTS   = -Wall -fPIC
 INCS   = 
 LIBS   = -L. -lDisk

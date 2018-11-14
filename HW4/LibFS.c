@@ -7,7 +7,7 @@
 #include "LibFS.h"
 
 // set to 1 to have detailed debug print-outs and 0 to have none
-#define FSDEBUG 0
+#define FSDEBUG 1
 #define BYTE 8
 #if FSDEBUG
 #define dprintf printf
@@ -50,6 +50,7 @@ void noprintf(char *str, ...) {}
 // 4. the inode table (one or more sectors), which contains the inodes
 // stored consecutively
 #define INODE_TABLE_START_SECTOR (SECTOR_BITMAP_START_SECTOR+SECTOR_BITMAP_SECTORS)
+
 
 // an inode is used to represent each file or directory; the data
 // structure supposedly contains all necessary information about the
@@ -137,7 +138,7 @@ static void bitmap_init(int start, int num, int nbits) {
             nbits = nbits - (numOfCharsToSet * 8);
 
             // set remaining bits to one
-            for (int j = 0; j < 8; j++) {
+            for (int j = 0; j < 7; j++) {
                 if (nbits) {
                     buffer[numOfCharsToSet] |= 1;
                     nbits--;
@@ -684,6 +685,41 @@ int File_Create(char *file) {
     return create_file_or_directory(0, file);
 }
 
+int delete_file_or_dir(int type, char *pathname) {
+    int child_inode;
+    char last_fname[MAX_NAME];
+    int parent_inode = follow_path(pathname, &child_inode, last_fname);
+
+    // if it is a file and is open
+    if (!type && is_file_open(child_inode)) {
+        dprintf("... file '%s' is currently open\n", last_fname);
+        osErrno = E_FILE_IN_USE;
+        return -1;
+    }
+
+    if (parent_inode >= 0) {
+        if (child_inode >= 0) {
+            if (!remove_inode(type, parent_inode, child_inode)) {
+                dprintf("... file/directory '%s' successfully Unlinked\n", pathname);
+                // successful removal
+                return 0;
+            } else {
+                dprintf("... file/directory '%s' unable to Unlink\n", pathname);
+                osErrno = E_GENERAL;
+                return -1;
+            }
+        } else {
+            dprintf("... file/directory '%s' does not exists.\n", pathname);
+            if (type) { osErrno = E_NO_SUCH_DIR; }
+            else { osErrno = E_NO_SUCH_FILE; }
+            return -1;
+        }
+    } else {
+        dprintf("... error: something wrong with the file/path: '%s'\n", pathname);
+        osErrno = E_GENERAL;
+        return -1;
+    }
+}
 
 /**
  * This function is the opposite of File_Create(). This function should delete the file
@@ -695,17 +731,15 @@ int File_Create(char *file) {
  * @param file
  * @return
  */
-int File_Unlink(char *file) {
-    /* YOUR CODE */
-    // TODO #3
 
+int File_Unlink(char *file) {
+    // TODO #3
     if (illegal_filename(file)) {
         osErrno = E_NO_SUCH_FILE;
         return -1;
     }
-
-
-    return -1;
+    dprintf("File_Unlink('%s'):\n", file);
+    return delete_file_or_dir(0, file);
 }
 
 int File_Open(char *file) {

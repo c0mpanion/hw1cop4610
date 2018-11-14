@@ -1,9 +1,9 @@
 # this is the Makefile to compile test cases
 
-CC     = gcc -std=c99
+CC     = gcc -std=gnu99
 OPTS   = -O -Wall
 INCS   =
-LIBS   = -R. -L. -lFS -lDisk
+LIBS   = -L. -lFS -lDisk
 SHLIBS = libDisk.so libFS.so
 
 SRCS   = main.c simple-test.c \
@@ -37,3 +37,4 @@ libDisk.so:	LibDisk.h LibDisk.c
 
 libFS.so:	LibFS.h LibFS.c
 	make -f Makefile.LibFS
+
