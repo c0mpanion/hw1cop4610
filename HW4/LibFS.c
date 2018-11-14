@@ -457,64 +457,54 @@ int create_file_or_directory(int type, char *pathname) {
 // -1 if general error, -2 if directory not empty, -3 if wrong type
 int remove_inode(int type, int parent_inode, int child_inode) {
     // TODO remove_inode
-    char parentBuffer[SECTOR_SIZE];
-    char childBuffer[SECTOR_SIZE];
+    char buffer[SECTOR_SIZE];
+    int offset = 0;
 
-    inode_t *parent;
-    inode_t *child;
+    //load block containing child inode
+    Disk_Read(INODE_TABLE_START_SECTOR + (child_inode / INODES_PER_SECTOR), buffer);
 
-    // read sectors containing parent and child
-    Disk_Read(INODE_TABLE_START_SECTOR + (parent_inode / INODES_PER_SECTOR), parentBuffer);
-    Disk_Read(INODE_TABLE_START_SECTOR + (child_inode / INODES_PER_SECTOR), childBuffer);
+    offset = child_inode - (child_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
+    inode_t *child_node_t = (inode_t *) buffer + (offset * sizeof(inode_t));
 
-    // calculate offset within the sector
-    int parentOffSet = parent_inode - (parent_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
-    int childOffSet = child_inode - (child_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
-
-    parent = (inode_t *) parentBuffer + parentOffSet;
-    child = (inode_t *) childBuffer + childOffSet;
-
-    // if child type doesnt match or parent is not dir
-    if (child->type != type || parent->type != 1) {
+    // check for type and empty dir
+    if (child_node_t->type != type) {
         return -3;
-    }
-        // child is a directory and it is not empty
-    else if (child->type == 1 && child->size > 0) {
+    } else if (child_node_t->type == 1 && child_node_t->size > 0) {
         return -2;
     }
+    //remove data related to file
+    for (int i = 0; i < MAX_SECTORS_PER_FILE; i++) {
+        if (child_node_t->data[i]) {
+            char clearingBuffer[SECTOR_SIZE];
+            bitmap_reset(SECTOR_BITMAP_START_SECTOR, SECTOR_BITMAP_SECTORS, child_node_t->data[i]);
+            Disk_Read(child_node_t->data[i], clearingBuffer);
+            memset(clearingBuffer, 0, SECTOR_SIZE);
+            Disk_Write(child_node_t->data[i], clearingBuffer);
+        }
+    }
+    //remove child inode
+    memset(child_node_t, 0, sizeof(inode_t));
+    bitmap_reset(INODE_BITMAP_START_SECTOR, INODE_BITMAP_SECTORS, child_inode);
+    Disk_Write(INODE_TABLE_START_SECTOR + (child_inode / INODES_PER_SECTOR), buffer);
 
-    for (int dataBlock = 0; dataBlock < MAX_SECTORS_PER_FILE; dataBlock++) {
-        char block[SECTOR_SIZE];
-        Disk_Read(parent->data[dataBlock], block);
+    // load block containing parent
+    Disk_Read(INODE_TABLE_START_SECTOR + (parent_inode / INODES_PER_SECTOR), buffer);
+    offset = parent_inode - (parent_inode / INODES_PER_SECTOR) * INODES_PER_SECTOR;
+    inode_t *parent_node_t = (inode_t *) buffer + (offset * sizeof(inode_t));
 
-        // check each file/dir entry to see if it matches child_inode
-        for (int i = 0; i < DIRENTS_PER_SECTOR; i++) {
-            dirent_t *file = (dirent_t *) block + (i * sizeof(dirent_t));
+    for (int j = 0; j < MAX_SECTORS_PER_FILE; j++) {
+        if (parent_node_t->data[j]) {
+            char direntBuffer[SECTOR_SIZE];
+            Disk_Read(parent_node_t->data[j], direntBuffer);
 
-            // if found
-            if (file->inode == child_inode) {
-                // remove file entry
-                memset(file, 0, sizeof(dirent_t));
-                // clear bit at inode bitmap
-                bitmap_reset(INODE_BITMAP_START_SECTOR, INODE_BITMAP_SECTORS, child_inode);
-
-                // save changes to disk
-                parent->size--;
-                Disk_Write(parent->data[dataBlock], block);
-                Disk_Write(INODE_TABLE_START_SECTOR + (parent_inode / INODES_PER_SECTOR), parentBuffer);
-
-                // clear every block associated with file
-                char *clearingBuffer = calloc(SECTOR_SIZE, sizeof(char));
-                for (int childSector = 0; childSector < MAX_SECTORS_PER_FILE; childSector++) {
-                    bitmap_reset(SECTOR_BITMAP_START_SECTOR, SECTOR_BITMAP_SECTORS, child->data[childSector]);
-                    Disk_Write(child->data[childSector], clearingBuffer);
+            for (int k = 0; k < DIRENTS_PER_SECTOR; k++) {
+                dirent_t *entry = (dirent_t *) direntBuffer + (k * sizeof(dirent_t));
+                // if entry matches child
+                if (entry->inode == child_inode) {
+                    memset(entry, 0, sizeof(dirent_t));
+                    Disk_Write( parent_node_t->data[j], direntBuffer);
+                    return 0;
                 }
-                free(clearingBuffer);
-                //clear child inode
-                memset(child, 0, sizeof(inode_t));
-                // successful removal of child
-                Disk_Write(INODE_TABLE_START_SECTOR + (child_inode / INODES_PER_SECTOR), childBuffer);
-                return 0;
             }
         }
     }
