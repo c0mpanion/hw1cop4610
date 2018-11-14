@@ -456,7 +456,7 @@ int create_file_or_directory(int type, char *pathname) {
 // File_Unlink() and Dir_Unlink(); the function returns 0 if success,
 // -1 if general error, -2 if directory not empty, -3 if wrong type
 int remove_inode(int type, int parent_inode, int child_inode) {
-    // TODO # remove inode
+    // TODO remove_inode
     char parentBuffer[SECTOR_SIZE];
     char childBuffer[SECTOR_SIZE];
 
@@ -699,13 +699,22 @@ int delete_file_or_dir(int type, char *pathname) {
 
     if (parent_inode >= 0) {
         if (child_inode >= 0) {
-            if (!remove_inode(type, parent_inode, child_inode)) {
+            int operation = remove_inode(type, parent_inode, child_inode);
+            if (!operation) {
                 dprintf("... file/directory '%s' successfully Unlinked\n", pathname);
                 // successful removal
                 return 0;
             } else {
-                dprintf("... file/directory '%s' unable to Unlink\n", pathname);
-                osErrno = E_GENERAL;
+                if (operation == -2) {
+                    dprintf("... directory '%s' is not empty.\n", pathname);
+                    osErrno = E_DIR_NOT_EMPTY;
+                } else if (operation == -3) {
+                    dprintf("... wrong type '%s'.\n", pathname);
+                    osErrno = E_GENERAL;
+                } else {
+                    dprintf("... file/directory '%s' unable to Unlink\n", pathname);
+                    osErrno = E_GENERAL;
+                }
                 return -1;
             }
         } else {
@@ -733,12 +742,14 @@ int delete_file_or_dir(int type, char *pathname) {
  */
 
 int File_Unlink(char *file) {
-    // TODO #3
-    if (illegal_filename(file)) {
+    // TODO File_Unlink
+    char *check = file + 1;// ignore '/' root dir
+    if (illegal_filename(check)) {
+        dprintf("Illegal file name('%s'):\n", file);
         osErrno = E_NO_SUCH_FILE;
         return -1;
     }
-    dprintf("File_Unlink('%s'):\n", file);
+    dprintf("File_Unlink ('%s'):\n", file);
     return delete_file_or_dir(0, file);
 }
 
@@ -831,9 +842,15 @@ int Dir_Create(char *path) {
 }
 
 int Dir_Unlink(char *path) {
-    /* YOUR CODE */
-    // TODO #7
-    return -1;
+    // TODO Dir_Unlink
+    char *check = path + 1;// ignore '/' root dir
+    if (illegal_filename(check)) {
+        dprintf("Illegal directory name('%s'):\n", path);
+        osErrno = E_NO_SUCH_DIR;
+        return -1;
+    }
+    dprintf("Dir_Unlink ('%s'):\n", path);
+    return delete_file_or_dir(1, path);
 }
 
 int Dir_Size(char *path) {
