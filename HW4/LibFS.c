@@ -810,9 +810,59 @@ int File_Open(char *file) {
 }
 
 int File_Read(int fd, void *buffer, int size) {
-    /* YOUR CODE */
-    // TODO #4
-    return -1;
+    // TODO File_Read
+    int bytesRead = 0;
+    open_file_t openFileEntry = open_files[fd];
+
+    // check to see if file is open
+    if (openFileEntry.inode == 0) {
+        dprintf("...file not open");
+        osErrno = E_BAD_FD;
+        return -1;
+    }
+    // if position is at end, zero bytes read
+    if (!openFileEntry.pos) { return 0; }
+
+    // load the disk sector containing the inode
+    int inode_sector = INODE_TABLE_START_SECTOR + openFileEntry.inode / INODES_PER_SECTOR;
+    char inode_buffer[SECTOR_SIZE];
+    if (Disk_Read(inode_sector, inode_buffer) < 0) return -1;
+    dprintf("... load inode from disk sector %d\n", inode_sector);
+
+    // get the inode
+    int inode_start_entry = (inode_sector - INODE_TABLE_START_SECTOR) * INODES_PER_SECTOR;
+    int offset = openFileEntry.inode - inode_start_entry;
+    assert(0 <= offset && offset < INODES_PER_SECTOR);
+    inode_t *inode = (inode_t *) (inode_buffer + offset * sizeof(inode_t));
+
+    // next sector to be read
+    int nextSector = openFileEntry.pos / SECTOR_SIZE;
+
+    char sectorBuffer[SECTOR_SIZE];
+    if (Disk_Read(inode->data[nextSector], sectorBuffer) < 0) { return -1; }
+    dprintf("... load disk sector %d\n", inode->data[nextSector]);
+
+    // allocate memory needed to load file data
+    buffer = malloc((size_t) size);
+
+    void *bufferWriter = buffer;
+    while (size >= SECTOR_SIZE && ((open_files[fd].pos + size) <= MAX_FILE_SIZE)) {
+        memcpy(bufferWriter, sectorBuffer, SECTOR_SIZE);
+        bufferWriter += (size_t) SECTOR_SIZE;
+        nextSector++;
+        open_files[fd].pos += SECTOR_SIZE;
+        if (Disk_Read(inode->data[nextSector], sectorBuffer) < 0) { return -1; }
+        dprintf("... load disk sector %d\n", inode->data[nextSector]);
+        bytesRead += SECTOR_SIZE;
+        size -= SECTOR_SIZE;
+    }
+
+    if (size > 0 && ((bytesRead + size) <= MAX_FILE_SIZE) ) {
+        memcpy(bufferWriter, sectorBuffer, (size_t) size);
+        open_files[fd].pos += size;
+        bytesRead += size;
+    }
+    return bytesRead;
 }
 
 int File_Write(int fd, void *buffer, int size) {
@@ -876,8 +926,7 @@ int File_Write(int fd, void *buffer, int size) {
 }
 
 int File_Seek(int fd, int offset) {
-    /* YOUR CODE */
-    // TODO #6
+    // TODO File_Seek
     return 0;
 }
 
@@ -912,12 +961,12 @@ int Dir_Unlink(char *path) {
 
 int Dir_Size(char *path) {
     /* YOUR CODE */
-    // TODO #8
+    // TODO Dir_Size
     return 0;
 }
 
 int Dir_Read(char *path, void *buffer, int size) {
     /* YOUR CODE */
-    // TODO #9
+    // TODO Dir_Read
     return -1;
 }
