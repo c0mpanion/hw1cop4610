@@ -820,54 +820,64 @@ int File_Read(int fd, void *buffer, int size) {
         osErrno = E_BAD_FD;
         return -1;
     }
-    // if position is at end, zero bytes read
-    if (!openFileEntry.pos) { return 0; }
 
     // load the disk sector containing the inode
     int inode_sector = INODE_TABLE_START_SECTOR + openFileEntry.inode / INODES_PER_SECTOR;
     char inode_buffer[SECTOR_SIZE];
     if (Disk_Read(inode_sector, inode_buffer) < 0) return -1;
-    dprintf("... load inode from disk sector %d\n", inode_sector);
+    dprintf("\n... load inode from disk sector %d\n", inode_sector);
 
     // get the inode
     int inode_start_entry = (inode_sector - INODE_TABLE_START_SECTOR) * INODES_PER_SECTOR;
     int offset = openFileEntry.inode - inode_start_entry;
+
     assert(0 <= offset && offset < INODES_PER_SECTOR);
     inode_t *inode = (inode_t *) (inode_buffer + offset * sizeof(inode_t));
 
     // next sector to be read
     int nextSector = openFileEntry.pos / SECTOR_SIZE;
+    // if position is at end, or sector is not valid
+    if (openFileEntry.pos == MAX_FILE_SIZE || !inode->data[nextSector]) { return 0; }
+
 
     char sectorBuffer[SECTOR_SIZE];
     if (Disk_Read(inode->data[nextSector], sectorBuffer) < 0) { return -1; }
     dprintf("... load disk sector %d\n", inode->data[nextSector]);
 
-    // allocate memory needed to load file data
-    buffer = malloc((size_t) size);
-
     void *bufferWriter = buffer;
-    while (size >= SECTOR_SIZE && ((open_files[fd].pos + size) <= MAX_FILE_SIZE)) {
-        memcpy(bufferWriter, sectorBuffer, SECTOR_SIZE);
-        bufferWriter += (size_t) SECTOR_SIZE;
-        nextSector++;
-        open_files[fd].pos += SECTOR_SIZE;
-        if (Disk_Read(inode->data[nextSector], sectorBuffer) < 0) { return -1; }
-        dprintf("... load disk sector %d\n", inode->data[nextSector]);
-        bytesRead += SECTOR_SIZE;
-        size -= SECTOR_SIZE;
-    }
+    void *readingPosition = sectorBuffer + (open_files[fd].pos - (openFileEntry.pos / SECTOR_SIZE));
 
-    if (size > 0 && ((bytesRead + size) <= MAX_FILE_SIZE) ) {
-        memcpy(bufferWriter, sectorBuffer, (size_t) size);
-        open_files[fd].pos += size;
-        bytesRead += size;
+    while (open_files[fd].pos < MAX_FILE_SIZE && size > 0 && inode->data[nextSector]) {
+
+        if (size >= SECTOR_SIZE) {
+            memcpy(bufferWriter, readingPosition, SECTOR_SIZE);
+            size -= SECTOR_SIZE;
+            bufferWriter += SECTOR_SIZE;
+            bytesRead += SECTOR_SIZE;
+            open_files[fd].pos += SECTOR_SIZE;
+            nextSector++;
+
+            if (open_files[fd].pos < MAX_FILE_SIZE) {
+                if (Disk_Read(inode->data[nextSector], sectorBuffer) < 0) { return -1; }
+                readingPosition = sectorBuffer;
+            } else { return bytesRead; }
+
+        } else {
+            memcpy(bufferWriter, readingPosition, (size_t) size);
+            bytesRead += size;
+            open_files[fd].pos += size;
+            size -= size;
+
+        }
+        return bytesRead;
     }
-    return bytesRead;
+    return 0;
 }
 
 int File_Write(int fd, void *buffer, int size) {
     // TODO File_Write
     int bytesWriten = size;
+    void *bufferReader = buffer;
     open_file_t openFileEntry = open_files[fd];
     //check if file is not open
     if (openFileEntry.inode == 0) {
@@ -904,22 +914,24 @@ int File_Write(int fd, void *buffer, int size) {
             return -1;
         }
         fileInode->data[i] = sectorIndex;
-        Disk_Read(DATABLOCK_START_SECTOR + sectorIndex, sector);
+        Disk_Read(sectorIndex, sector);
 
         // write buffer to sector. Buffer might be bigger than sector
         // need to request more sectors
         if (size > SECTOR_SIZE) {
             size -= SECTOR_SIZE;
-            memcpy(sector, buffer, SECTOR_SIZE);
+            memcpy(sector, bufferReader, SECTOR_SIZE);
+            bufferReader += SECTOR_SIZE;
             fileInode->size += SECTOR_SIZE;
         } else {
-            memcpy(sector, buffer, (size_t) size);
+            memcpy(sector, bufferReader, (size_t) size);
+            bufferReader += size;
             fileInode->size += size;
             size = 0;
         }
         openFileEntry.size = fileInode->size;
         openFileEntry.pos = fileInode->size;
-        Disk_Write(DATABLOCK_START_SECTOR + sectorIndex, sector);
+        Disk_Write(sectorIndex, sector);
     }
     Disk_Write(INODE_TABLE_START_SECTOR + (openFileEntry.inode / INODES_PER_SECTOR), sectorBuffer);
     return bytesWriten - size;
