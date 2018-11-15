@@ -791,8 +791,59 @@ int File_Open(char *file) {
 }
 
 int File_Read(int fd, void *buffer, int size) {
-    /* YOUR CODE */
     // TODO #4
+    
+    int bytesRead = 0;
+    open_file_t openFileEntry = open_files[fd];
+    
+    // check to see if file is open
+    if (openFileEntry.inode == 0)
+    {
+      dprintf("...file not open");
+      osErrno = E_BAD_FD;
+      return -1;
+    }
+    
+    // sector buffer used to read from disk
+    char sectorBuffer[SECTOR_SIZE];
+    inode_t *fileInode;
+    
+    // gets inode information on the open file entry 
+    Disk_Read(INODE_TABLE_START_SECTOR + (openFileEntry.inode /
+      INODES_PER_SECTOR), sectorBuffer);
+      
+    // calculates where the inode is within from where the sector starts
+    int offset = openFileEntry.inode - (openFileEntry.inode /
+    INODES_PER_SECTOR) * INODES_PER_SECTOR;
+    
+    // get the inode pointed to by the buffer find its start data block
+    fileInode = (inode_t *) sectorBuffer + offset;
+
+    int sectorsNeeded = (size / SECTOR_SIZE) + 1;
+    
+    // loop through each sector, read it in, and add to the buffer
+    for (int i = 0; i < sectorsNeeded; i++)
+    {
+      char sectorBuffer[SECTOR_SIZE];
+      int sectorIndex = fileInode->data[i]
+      // check if the position of the open file is the end of the file
+      if (openFileEntry.pos = fileInode->size)
+      {
+        return 0;
+      }
+      // Read the sector where the data is into the sector buffer
+      Disk_Read(sectorIndex, sectorBuffer);
+      // Append the read sector into the read buffer
+      memcpy(buffer, sectorBuffer, SECTOR_SIZE);
+      
+      // Update the position of the open file
+      openFileEntry.pos = sectorIndex;
+      
+      // Update the number of bytes read
+      bytesRead += SECTOR_SIZE;
+    }
+    
+    
     return -1;
 }
 
