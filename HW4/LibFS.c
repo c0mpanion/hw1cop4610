@@ -813,14 +813,12 @@ int File_Read(int fd, void *buffer, int size) {
     // TODO File_Read
     int bytesRead = 0;
     open_file_t openFileEntry = open_files[fd];
-
     // check to see if file is open
     if (openFileEntry.inode == 0) {
         dprintf("...file not open");
         osErrno = E_BAD_FD;
         return -1;
     }
-
     // load the disk sector containing the inode
     int inode_sector = INODE_TABLE_START_SECTOR + openFileEntry.inode / INODES_PER_SECTOR;
     char inode_buffer[SECTOR_SIZE];
@@ -839,39 +837,39 @@ int File_Read(int fd, void *buffer, int size) {
     // if position is at end, or sector is not valid
     if (openFileEntry.pos == MAX_FILE_SIZE || !inode->data[nextSector]) { return 0; }
 
-
     char sectorBuffer[SECTOR_SIZE];
     if (Disk_Read(inode->data[nextSector], sectorBuffer) < 0) { return -1; }
     dprintf("... load disk sector %d\n", inode->data[nextSector]);
 
     void *bufferWriter = buffer;
-    void *readingPosition = sectorBuffer + (open_files[fd].pos - (openFileEntry.pos / SECTOR_SIZE));
+    void *readingPosition = sectorBuffer + (open_files[fd].pos - (openFileEntry.pos / SECTOR_SIZE) * SECTOR_SIZE);
 
+    // read file data until EOF or until requested size bytes have been read
     while (open_files[fd].pos < MAX_FILE_SIZE && size > 0 && inode->data[nextSector]) {
 
         if (size >= SECTOR_SIZE) {
+            dprintf("... Reading BYTE  %d\n", open_files[fd].pos);
             memcpy(bufferWriter, readingPosition, SECTOR_SIZE);
             size -= SECTOR_SIZE;
             bufferWriter += SECTOR_SIZE;
             bytesRead += SECTOR_SIZE;
             open_files[fd].pos += SECTOR_SIZE;
             nextSector++;
-
+            // check if there is more data available
             if (open_files[fd].pos < MAX_FILE_SIZE) {
                 if (Disk_Read(inode->data[nextSector], sectorBuffer) < 0) { return -1; }
                 readingPosition = sectorBuffer;
             } else { return bytesRead; }
 
         } else {
+            dprintf("... Reading BYTE  %d\n", open_files[fd].pos);
             memcpy(bufferWriter, readingPosition, (size_t) size);
             bytesRead += size;
             open_files[fd].pos += size;
-            size -= size;
-
+            return bytesRead;
         }
-        return bytesRead;
     }
-    return 0;
+    return bytesRead;
 }
 
 int File_Write(int fd, void *buffer, int size) {
