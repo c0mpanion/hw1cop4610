@@ -811,6 +811,7 @@ int File_Open(char *file) {
 
 int File_Read(int fd, void *buffer, int size) {
     // TODO File_Read
+    
     int bytesRead = 0;
     open_file_t openFileEntry = open_files[fd];
     // check to see if file is open
@@ -822,6 +823,7 @@ int File_Read(int fd, void *buffer, int size) {
     // load the disk sector containing the inode
     int inode_sector = INODE_TABLE_START_SECTOR + openFileEntry.inode / INODES_PER_SECTOR;
     char inode_buffer[SECTOR_SIZE];
+    
     if (Disk_Read(inode_sector, inode_buffer) < 0) return -1;
     dprintf("\n... load inode from disk sector %d\n", inode_sector);
 
@@ -970,10 +972,61 @@ int Dir_Unlink(char *path) {
 }
 
 int Dir_Size(char *path) {
-    /* YOUR CODE */
-    // TODO Dir_Size
-    return 0;
-}
+      // TODO Dir_Size
+      int size = 0;
+      int child;
+      char fname[MAX_NAME];
+      follow_path(path, &child, fname); // get the inode of the directory
+
+      dprintf("file name is '%s'\n", fname);
+      
+      // find where sector starts
+      int inode_sector = INODE_TABLE_START_SECTOR + child /INODES_PER_SECTOR; 
+      // buffer to read in the inode from the sector
+      char inode_buffer[SECTOR_SIZE];
+      //get the inode from the disk
+      Disk_Read(inode_sector, inode_buffer);
+      int inode_start_entry = (inode_sector - INODE_TABLE_START_SECTOR) * INODES_PER_SECTOR;
+      int offset = child - inode_start_entry;
+      
+      //get directory inode
+      inode_t* dir = (inode_t*)(inode_buffer + offset * sizeof(inode_t));
+      
+      if (dir->type != 1)
+      {
+        dprintf("... error, this is not a directory\n");
+        osErrno = E_NO_SUCH_DIR;
+        return 0;
+      }
+      
+    // CANNOT get this working
+      else if (dir->type == 1)
+      {
+        child = 0;
+        int i = 0;
+        dprintf("...directory size: %d\n", dir->size);
+        while (i < MAX_SECTORS_PER_FILE)
+        {
+          int sector_num = (unsigned char) dir->data[i];
+          char sector_buffer[SECTOR_SIZE];
+          Disk_Read(sector_num, sector_buffer);
+          
+          // go every 20 spaces in sector_buffer to get each dirent entry
+          dirent_t* this_entry = (dirent_t*)(sector_buffer + (i*(16 + sizeof(int))));
+          dprintf("... inode num: %d\n", this_entry->inode);
+          
+          // check that the inode number isn't 0, it's a inode entry, add 20 to the size
+          if (this_entry->inode > 0)
+          {
+            size += 20;
+            dprintf("...found '%s' inode \n", this_entry->fname);
+          }
+          i++;
+        }
+      }
+        dprintf("... Size of directory '%s' = %d bytes\n", path, size);
+        return size;
+    }
 
 int Dir_Read(char *path, void *buffer, int size) {
     /* YOUR CODE */
