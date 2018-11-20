@@ -104,6 +104,7 @@ int osErrno;
 static char bs_filename[1024];
 
 /* the following functions are internal helper functions */
+inode_t *loadInode(int inode_index);
 
 // check magic number in the superblock; return 1 if OK, and 0 if not
 static int check_magic() {
@@ -937,7 +938,23 @@ int File_Write(int fd, void *buffer, int size) {
 
 int File_Seek(int fd, int offset) {
     // TODO File_Seek
-    return 0;
+    open_file_t openFileEntry = open_files[fd];
+    //check if file is not open
+    if (openFileEntry.inode == 0) {
+        dprintf("... file not open");
+        osErrno = E_BAD_FD;
+        return -1;
+    }
+
+    //If offset is larger than the size of
+    //the file or negative
+    if (offset > openFileEntry.size || offset < 0) {
+        osErrno = E_SEEK_OUT_OF_BOUNDS;
+        return -1;
+    }
+
+    open_files[fd].pos = offset;
+    return open_files[fd].pos;
 }
 
 int File_Close(int fd) {
@@ -970,13 +987,49 @@ int Dir_Unlink(char *path) {
 }
 
 int Dir_Size(char *path) {
-    /* YOUR CODE */
     // TODO Dir_Size
-    return 0;
+    int inode_index;
+    follow_path(path, &inode_index, NULL);
+
+    if (inode_index >= 0) {
+        inode_t *dir_inode = loadInode(inode_index);
+
+        if (dir_inode->type != 1) {
+            dprintf("... error: '%s' is not a directory\n", path);
+            osErrno = E_GENERAL;
+            return -1;
+        }
+        dprintf("DIR SIZE: %d\n", dir_inode->size);
+        return dir_inode->size * sizeof(dirent_t);
+
+    } else {
+        dprintf("... directory '%s' is not found\n", path);
+        return 0;
+    }
 }
 
 int Dir_Read(char *path, void *buffer, int size) {
     /* YOUR CODE */
     // TODO Dir_Read
     return -1;
+}
+
+inode_t *loadInode(int inode_index) {
+    // load the disk sector containing the inode
+    int inode_sector = INODE_TABLE_START_SECTOR + inode_index / INODES_PER_SECTOR;
+    char inode_buffer[SECTOR_SIZE];
+    if (Disk_Read(inode_sector, inode_buffer) < 0) {
+        osErrno = E_GENERAL;
+        return NULL;
+    }
+    dprintf("... load inode table for inode from disk sector %d\n", inode_sector);
+
+    // get the inode
+    int inode_start_entry = (inode_sector - INODE_TABLE_START_SECTOR) * INODES_PER_SECTOR;
+    int offset = inode_index - inode_start_entry;
+    assert(0 <= offset && offset < INODES_PER_SECTOR);
+    inode_t *inode = (inode_t *) (inode_buffer + offset * sizeof(inode_t));
+    dprintf("... inode %d (size=%d, type=%d)\n",
+            inode_index, inode->size, inode->type);
+    return inode;
 }
