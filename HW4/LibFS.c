@@ -774,30 +774,14 @@ int File_Open(char *file) {
 
     int child_inode;
     follow_path(file, &child_inode, NULL);
-    if (child_inode >= 0) { // child is the one
-        // load the disk sector containing the inode
-        int inode_sector = INODE_TABLE_START_SECTOR + child_inode / INODES_PER_SECTOR;
-        char inode_buffer[SECTOR_SIZE];
-        if (Disk_Read(inode_sector, inode_buffer) < 0) {
-            osErrno = E_GENERAL;
-            return -1;
-        }
-        dprintf("... load inode table for inode from disk sector %d\n", inode_sector);
-
-        // get the inode
-        int inode_start_entry = (inode_sector - INODE_TABLE_START_SECTOR) * INODES_PER_SECTOR;
-        int offset = child_inode - inode_start_entry;
-        assert(0 <= offset && offset < INODES_PER_SECTOR);
-        inode_t *child = (inode_t *) (inode_buffer + offset * sizeof(inode_t));
-        dprintf("... inode %d (size=%d, type=%d)\n",
-                child_inode, child->size, child->type);
-
+    if (child_inode >= 0) {
+        // get inode for child
+        inode_t *child = loadInode(child_inode);
         if (child->type != 0) {
             dprintf("... error: '%s' is not a file\n", file);
             osErrno = E_GENERAL;
             return -1;
         }
-
         // initialize open file entry and return its index
         open_files[fd].inode = child_inode;
         open_files[fd].size = child->size;
@@ -999,9 +983,7 @@ int Dir_Size(char *path) {
             osErrno = E_GENERAL;
             return -1;
         }
-        dprintf("DIR SIZE: %d\n", dir_inode->size);
         return dir_inode->size * sizeof(dirent_t);
-
     } else {
         dprintf("... directory '%s' is not found\n", path);
         return 0;
@@ -1009,9 +991,41 @@ int Dir_Size(char *path) {
 }
 
 int Dir_Read(char *path, void *buffer, int size) {
-    /* YOUR CODE */
     // TODO Dir_Read
-    return -1;
+    int dirSize = Dir_Size(path);
+    int inode_index;
+    follow_path(path, &inode_index, NULL);
+
+    // check if buffer is big enough
+    if (dirSize > size) {
+        osErrno = E_BUFFER_TOO_SMALL;
+        return -1;
+    }
+
+    if (inode_index >= 0) {
+        inode_t *dir_inode = loadInode(inode_index);
+
+        if (dir_inode->type != 1) {
+            dprintf("... error: '%s' is not a directory\n", path);
+            osErrno = E_GENERAL;
+            return -1;
+        }
+        // copy dirent into buffer
+        void *writer = buffer;
+        for (int i = 0; i < MAX_SECTORS_PER_FILE; i++) {
+            if (dir_inode->data[i]) {
+                char sector[SECTOR_SIZE];
+                if (Disk_Read(dir_inode->data[i], sector) < 0) return -1;
+                dprintf("... load sector %d\n", dir_inode->data[i]);
+                memcpy(writer, sector, SECTOR_SIZE);
+                writer += SECTOR_SIZE;
+            }
+        }
+        return dir_inode->size;
+    } else {
+        dprintf("... directory '%s' is not found\n", path);
+        return -1;
+    }
 }
 
 inode_t *loadInode(int inode_index) {
