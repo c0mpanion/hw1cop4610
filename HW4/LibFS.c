@@ -7,7 +7,7 @@
 #include "LibFS.h"
 
 // set to 1 to have detailed debug print-outs and 0 to have none
-#define FSDEBUG 1
+#define FSDEBUG 0
 #define BYTE 8
 #if FSDEBUG
 #define dprintf printf
@@ -983,7 +983,9 @@ int Dir_Size(char *path) {
             osErrno = E_GENERAL;
             return -1;
         }
-        return dir_inode->size * sizeof(dirent_t);
+        dprintf("... RETURNING SIZE: '%d' \n", (int) (dir_inode->size * sizeof(dirent_t)));
+
+        return (int) (dir_inode->size * sizeof(dirent_t));
     } else {
         dprintf("... directory '%s' is not found\n", path);
         return 0;
@@ -1005,22 +1007,20 @@ int Dir_Read(char *path, void *buffer, int size) {
     if (inode_index >= 0) {
         inode_t *dir_inode = loadInode(inode_index);
 
-        if (dir_inode->type != 1) {
-            dprintf("... error: '%s' is not a directory\n", path);
-            osErrno = E_GENERAL;
-            return -1;
-        }
         // copy dirent into buffer
         void *writer = buffer;
-        for (int i = 0; i < MAX_SECTORS_PER_FILE; i++) {
-            if (dir_inode->data[i]) {
-                char sector[SECTOR_SIZE];
-                if (Disk_Read(dir_inode->data[i], sector) < 0) return -1;
-                dprintf("... load sector %d\n", dir_inode->data[i]);
-                memcpy(writer, sector, SECTOR_SIZE);
-                writer += SECTOR_SIZE;
-            }
+        int blocks = dir_inode->size / DIRENTS_PER_SECTOR;
+
+        for (int i = 0; i <= blocks; i++) {
+            char sector[SECTOR_SIZE];
+            if (Disk_Read(dir_inode->data[i], sector) < 0) { return -1; }
+            dprintf("... load sector %d\n", dir_inode->data[i]);
+            // TODO need to check
+            memcpy(writer, sector, dirSize);
+            writer += dirSize;
         }
+        dprintf(".. SIZE: '%d' \n", dir_inode->size);
+
         return dir_inode->size;
     } else {
         dprintf("... directory '%s' is not found\n", path);
